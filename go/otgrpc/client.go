@@ -39,25 +39,37 @@ func OpenTracingClientInterceptor(tracer opentracing.Tracer, optFuncs ...Option)
 	) error {
 		var err error
 		var parentCtx opentracing.SpanContext
-		if parent := opentracing.SpanFromContext(ctx); parent != nil {
+		parent := opentracing.SpanFromContext(ctx)
+		if parent != nil {
 			parentCtx = parent.Context()
 		}
 		if otgrpcOpts.inclusionFunc != nil &&
 			!otgrpcOpts.inclusionFunc(parentCtx, method, req, resp) {
 			return invoker(ctx, method, req, resp, cc, opts...)
 		}
-		clientSpan := tracer.StartSpan(
-			method,
-			opentracing.ChildOf(parentCtx),
-			ext.SpanKindRPCClient,
-			gRPCComponentTag,
-		)
-		defer clientSpan.Finish()
-		ctx = injectSpanContext(ctx, tracer, clientSpan)
-		if otgrpcOpts.logPayloads {
-			clientSpan.LogFields(log.Object("gRPC request", req))
+		var clientSpan opentracing.Span
+		if otgrpcOpts.createSpan {
+			clientSpan := tracer.StartSpan(
+				method,
+				opentracing.ChildOf(parentCtx),
+				ext.SpanKindRPCClient,
+				gRPCComponentTag,
+			)
+			defer clientSpan.Finish()
+		} else if parent != nil {
+			clientSpan = parent
+			ctx = injectSpanContext(ctx, tracer, clientSpan)
+			if otgrpcOpts.logPayloads {
+				clientSpan.LogFields(log.Object("gRPC request", req))
+			}
 		}
+
 		err = invoker(ctx, method, req, resp, cc, opts...)
+		if clientSpan == nil {
+			// Nothing to do, span was not propagated.
+			return err
+		}
+		
 		if err == nil {
 			if otgrpcOpts.logPayloads {
 				clientSpan.LogFields(log.Object("gRPC response", resp))

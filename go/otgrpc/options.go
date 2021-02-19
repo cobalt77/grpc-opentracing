@@ -17,6 +17,16 @@ func LogPayloads() Option {
 	}
 }
 
+// CreateSpan returns an Option that tells the OpenTracing instrumentation to
+// create a new span for the gRPC call. If false, the span context will be
+// propagated if a span can be found in the outgoing context, but a new
+// child span will not be created.
+func CreateSpan(create bool) Option {
+	return func(o *options) {
+		o.createSpan = create
+	}
+}
+
 // SpanInclusionFunc provides an optional mechanism to decide whether or not
 // to trace a given gRPC call. Return true to create a Span and initiate
 // tracing, false to not create a Span and not trace.
@@ -57,6 +67,8 @@ func SpanDecorator(decorator SpanDecoratorFunc) Option {
 type options struct {
 	logPayloads bool
 	decorator   SpanDecoratorFunc
+	createSpan  bool
+
 	// May be nil.
 	inclusionFunc SpanInclusionFunc
 }
